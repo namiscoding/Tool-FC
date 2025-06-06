@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tool Chia Đội Bóng Đá</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="container">
+    <h1>Tool Chia Đội Bóng</h1>
+
+    <div class="card">
+        <h2>Thiết lập & Đăng ký</h2>
+        <div class="import-section" style="margin-bottom: 1.5rem;">
+            <textarea id="bulk-import-area" placeholder="Dán danh sách copy từ Facebook vào đây để import hàng loạt..."></textarea>
+            <button id="import-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                Import Danh Sách
+            </button>
+        </div>
+        <div class="input-group">
+            <input type="text" id="player-name" placeholder="Hoặc thêm từng người...">
+            <button id="add-player">Thêm</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Danh sách đăng ký (<span id="player-count">0</span>)</h2>
+            <button id="reset-all" class="danger">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Làm Mới
+            </button>
+        </div>
+        <div id="player-list-container">
+            <ul id="player-list"></ul>
+            <div id="player-list-empty" class="empty-state" style="display: none;">Chưa có cầu thủ nào trong danh sách.</div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <h2>Kết quả chia đội</h2>
+         <div class="input-group">
+            <input type="number" id="team-size" value="7" min="2" title="Số người mỗi đội">
+            <button id="divide-teams">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                Chia Đội
+            </button>
+        </div>
+        <div id="teams-result"></div>
+        <div id="teams-result-empty" class="empty-state" style="display: none; margin-top: 1rem;">Nhấn "Chia Đội" để xem kết quả.</div>
+    </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DOM Elements ---
+        const playerNameInput = document.getElementById('player-name');
+        const addPlayerBtn = document.getElementById('add-player');
+        const bulkImportArea = document.getElementById('bulk-import-area');
+        const importBtn = document.getElementById('import-btn');
+        const playerListUI = document.getElementById('player-list');
+        const playerCountSpan = document.getElementById('player-count');
+        const teamSizeInput = document.getElementById('team-size');
+        const divideTeamsBtn = document.getElementById('divide-teams');
+        const teamsResultUI = document.getElementById('teams-result');
+        const resetBtn = document.getElementById('reset-all');
+        const playerListEmpty = document.getElementById('player-list-empty');
+        const teamsResultEmpty = document.getElementById('teams-result-empty');
+        const toastContainer = document.getElementById('toast-container');
+
+        // --- State Management ---
+        let players = [];
+        let teams = [];
+
+        // --- UI & UX Functions ---
+        const showToast = (message, type = 'success') => {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            const icon = type === 'success' 
+                ? `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`
+                : `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+            toast.innerHTML = `${icon}<span>${message}</span>`;
+            toastContainer.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'fadeOut 0.5s forwards';
+                toast.addEventListener('animationend', () => toast.remove());
+            }, 3000);
+        };
+        
+        const updateEmptyStates = () => {
+            playerListEmpty.style.display = players.length === 0 ? 'block' : 'none';
+            teamsResultEmpty.style.display = teams.length === 0 ? 'block' : 'none';
+            teamsResultUI.style.display = teams.length > 0 ? 'grid' : 'none';
+        };
+        
+        const updateTeamHeader = (teamIndex) => {
+            const teamHeader = teamsResultUI.querySelector(`ul[data-team-index="${teamIndex}"]`).previousElementSibling;
+            if (teamHeader) {
+                teamHeader.textContent = `Đội ${teamIndex + 1} (${teams[teamIndex].length} người)`;
+            }
+        };
+
+        // --- Core Logic Functions ---
+        const renderPlayerList = () => {
+            playerListUI.innerHTML = '';
+            players.forEach((player, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${player}</span>
+                    <button class="icon-btn delete-player" data-index="${index}" title="Xóa người chơi">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                `;
+                playerListUI.appendChild(li);
+            });
+            playerCountSpan.textContent = players.length;
+            updateEmptyStates();
+        };
+        
+        const renderTeams = () => {
+            teamsResultUI.innerHTML = '';
+            teams.forEach((team, teamIndex) => {
+                const teamCard = document.createElement('div');
+                teamCard.className = 'team-card';
+                const list = document.createElement('ul');
+                list.dataset.teamIndex = teamIndex;
+                team.forEach(player => {
+                    const li = document.createElement('li');
+                    li.textContent = player;
+                    li.draggable = true;
+                    list.appendChild(li);
+                });
+                teamCard.innerHTML = `<h3>Đội ${teamIndex + 1} (${team.length} người)</h3>`;
+                teamCard.appendChild(list);
+                teamsResultUI.appendChild(teamCard);
+            });
+            addDragAndDropListeners();
+            updateEmptyStates();
+        };
+        
+        const addSinglePlayer = (name) => {
+            if (!name) return false;
+            if (players.includes(name)) {
+                showToast(`Tên "${name}" đã có trong danh sách!`, 'error');
+                return false;
+            }
+            players.push(name);
+            return true;
+        };
+        
+        const importBulkPlayers = () => {
+            const text = bulkImportArea.value.trim();
+            if (!text) return;
+            const lines = text.split('\n');
+            let addedCount = 0;
+            lines.forEach(line => {
+                const trimmedLine = line.trim();
+                if (!trimmedLine || /\d/.test(trimmedLine) || trimmedLine.toLowerCase().includes('bạn chung') || trimmedLine.toLowerCase().includes('hoạt động')) return;
+                let finalName = trimmedLine;
+                let counter = 2;
+                while (players.includes(finalName)) {
+                    finalName = `${trimmedLine} (${counter})`;
+                    counter++;
+                }
+                players.push(finalName);
+                addedCount++;
+            });
+            if (addedCount > 0) {
+                renderPlayerList();
+                showToast(`Đã import thành công ${addedCount} thành viên!`);
+            } else {
+                showToast('Không tìm thấy tên hợp lệ nào để import.', 'error');
+            }
+            bulkImportArea.value = '';
+        };
+
+        const deletePlayer = (index) => {
+            const playerNameToDelete = players[index];
+            players.splice(index, 1);
+            renderPlayerList();
+            if (teams.length > 0) {
+                let sourceTeamIndex = -1;
+                // Find and remove player from the state
+                for (let i = 0; i < teams.length; i++) {
+                    const playerIndexInTeam = teams[i].indexOf(playerNameToDelete);
+                    if (playerIndexInTeam > -1) {
+                        teams[i].splice(playerIndexInTeam, 1);
+                        sourceTeamIndex = i;
+                        break;
+                    }
+                }
+                // If found, update the DOM directly
+                if (sourceTeamIndex !== -1) {
+                    const teamListUI = teamsResultUI.querySelector(`ul[data-team-index="${sourceTeamIndex}"]`);
+                    if (teamListUI) {
+                        for (const li of teamListUI.children) {
+                            if (li.textContent === playerNameToDelete) {
+                                li.remove();
+                                break;
+                            }
+                        }
+                        updateTeamHeader(sourceTeamIndex);
+                    }
+                }
+            }
+        };
+        
+        const shuffleArray = (array) => {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        };
+
+        const dividePlayersIntoTeams = () => {
+            const teamSize = parseInt(teamSizeInput.value, 10);
+            if (isNaN(teamSize) || teamSize < 1) {
+                showToast('Số người mỗi đội phải lớn hơn 0.', 'error');
+                return;
+            }
+            if (players.length === 0) {
+                showToast('Vui lòng thêm người chơi vào danh sách.', 'error');
+                return;
+            }
+            const shuffledPlayers = [...players];
+            shuffleArray(shuffledPlayers);
+            teams = [];
+            for (let i = 0; i < shuffledPlayers.length; i += teamSize) {
+                teams.push(shuffledPlayers.slice(i, i + teamSize));
+            }
+            renderTeams();
+        };
+        
+        const resetAll = () => {
+            if (confirm('Bạn có chắc muốn xóa toàn bộ danh sách và kết quả không?')) {
+                players = [];
+                teams = [];
+                renderPlayerList();
+                renderTeams();
+                playerNameInput.value = '';
+                bulkImportArea.value = '';
+                showToast('Đã làm mới thành công!', 'success');
+            }
+        };
+
+        // --- Drag and Drop Logic ---
+        const addDragAndDropListeners = () => {
+            const draggables = document.querySelectorAll('#teams-result li');
+            const teamLists = document.querySelectorAll('#teams-result ul');
+            let draggedItem = null;
+
+            draggables.forEach(item => {
+                item.addEventListener('dragstart', (e) => {
+                    draggedItem = e.target;
+                    setTimeout(() => e.target.classList.add('dragging'), 0);
+                });
+                item.addEventListener('dragend', (e) => {
+                    e.target.classList.remove('dragging');
+                });
+            });
+
+            teamLists.forEach(list => {
+                list.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    list.classList.add('drag-over');
+                });
+                list.addEventListener('dragleave', () => {
+                    list.classList.remove('drag-over');
+                });
+                list.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    list.classList.remove('drag-over');
+                    if (draggedItem && draggedItem.parentNode !== list) {
+                        const sourceList = draggedItem.parentNode;
+                        const sourceTeamIndex = parseInt(sourceList.dataset.teamIndex);
+                        const targetTeamIndex = parseInt(list.dataset.teamIndex);
+                        const playerName = draggedItem.textContent;
+
+                        // DOM Manipulation
+                        list.appendChild(draggedItem);
+
+                        // State Update
+                        const playerIndexInSource = teams[sourceTeamIndex].indexOf(playerName);
+                        if (playerIndexInSource > -1) {
+                           teams[sourceTeamIndex].splice(playerIndexInSource, 1);
+                        }
+                        teams[targetTeamIndex].push(playerName);
+                        
+                        // Update Headers without full re-render
+                        updateTeamHeader(sourceTeamIndex);
+                        updateTeamHeader(targetTeamIndex);
+                    }
+                });
+            });
+        };
+
+        // --- Initial Setup & Event Listeners ---
+        const handleAddSinglePlayer = () => {
+             if (addSinglePlayer(playerNameInput.value.trim())) {
+                renderPlayerList();
+                playerNameInput.value = '';
+             }
+             playerNameInput.focus();
+        };
+        addPlayerBtn.addEventListener('click', handleAddSinglePlayer);
+        playerNameInput.addEventListener('keypress', (e) => e.key === 'Enter' && handleAddSinglePlayer());
+        importBtn.addEventListener('click', importBulkPlayers);
+        playerListUI.addEventListener('click', (e) => {
+            const deleteBtn = e.target.closest('.delete-player');
+            if (deleteBtn) {
+                const index = parseInt(deleteBtn.dataset.index, 10);
+                deletePlayer(index);
+            }
+        });
+        divideTeamsBtn.addEventListener('click', dividePlayersIntoTeams);
+        resetBtn.addEventListener('click', resetAll);
+        
+        // Initial render
+        updateEmptyStates();
+    });
+</script>
+
+</body>
+</html>
